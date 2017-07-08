@@ -102,6 +102,12 @@ func (l *Layer) Leave(addr string, timeout time.Duration) error {
 	return l.requestMembershipChange(raftmembership.LeaveRequest, addr, timeout)
 }
 
+// MembershipChangeRequests is a channel of raftmembership.ChangeRequest
+// objects processed by our Handler.
+func (l *Layer) MembershipChangeRequests() chan *raftmembership.ChangeRequest {
+	return l.handler.MembershipChangeRequests()
+}
+
 // Build a full url.URL object out of our path.
 func (l *Layer) url() *url.URL {
 	url, err := url.Parse(l.path)
