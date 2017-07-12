@@ -17,7 +17,7 @@ import (
 // Connect two raft nodes using HTTP network layers.
 func Example() {
 	// Create a 3-node cluster with default test configuration.
-	cluster := rafttest.NewUnstartedCluster(3)
+	cluster := rafttest.NewCluster(3)
 
 	// Turn off automatic transports connect
 	cluster.AutoConnectNodes = false
@@ -88,7 +88,7 @@ func Example() {
 
 	// Output:
 	// true
-	fmt.Printf("%v", strings.Contains(cluster.LogOutput(), "entering Leader state"))
+	fmt.Printf("%v", strings.Contains(cluster.LogOutput.String(), "entering Leader state"))
 }
 
 // Create a new Layer using a new Handler attached to a running HTTP
