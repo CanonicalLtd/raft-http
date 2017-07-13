@@ -1,4 +1,4 @@
-raft-http [![Build Status](https://travis-ci.org/dqlite/raft-http.png)](https://travis-ci.org/dqlite/raft-http) [![Coverage Status](https://coveralls.io/repos/github/dqlite/raft-http/badge.svg?branch=master)](https://coveralls.io/github/dqlite/raft-http?branch=master)
+raft-http [![Build Status](https://travis-ci.org/dqlite/raft-http.png)](https://travis-ci.org/dqlite/raft-http) [![Coverage Status](https://coveralls.io/repos/github/dqlite/raft-http/badge.svg?branch=master)](https://coveralls.io/github/dqlite/raft-http?branch=master) [![Go Report Card](https://goreportcard.com/badge/github.com/dqlite/raft-http)](https://goreportcard.com/report/github.com/dqlite/raft-http)  [![GoDoc](https://godoc.org/github.com/dqlite/raft-http?status.svg)](https://godoc.org/github.com/dqlite/raft-http)
 =========
 
 This repository provides the `rafthttp` package, which can be used to
