@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/dqlite/raft-membership"
+	"github.com/CanonicalLtd/raft-membership"
 	"github.com/pkg/errors"
 )
 

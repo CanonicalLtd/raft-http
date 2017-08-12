@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dqlite/raft-membership"
+	"github.com/CanonicalLtd/raft-membership"
 	"github.com/pkg/errors"
 )
 

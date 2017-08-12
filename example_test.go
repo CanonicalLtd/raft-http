@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dqlite/raft-http"
-	"github.com/dqlite/raft-membership"
-	"github.com/dqlite/raft-test"
+	"github.com/CanonicalLtd/raft-http"
+	"github.com/CanonicalLtd/raft-membership"
+	"github.com/CanonicalLtd/raft-test"
 	"github.com/hashicorp/raft"
 )
 
