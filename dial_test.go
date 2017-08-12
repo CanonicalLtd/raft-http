@@ -21,7 +21,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dqlite/raft-http"
+	"github.com/CanonicalLtd/raft-http"
 )
 
 func TestDial(t *testing.T) {

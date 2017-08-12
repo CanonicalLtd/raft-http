@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dqlite/raft-http"
+	"github.com/CanonicalLtd/raft-http"
 )
 
 // The Accept method receives connections from the conns channel.

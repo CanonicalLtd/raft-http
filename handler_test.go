@@ -9,8 +9,8 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/dqlite/raft-http"
-	"github.com/dqlite/raft-membership"
+	"github.com/CanonicalLtd/raft-http"
+	"github.com/CanonicalLtd/raft-membership"
 )
 
 func TestHandler_NoUpgradeHeader(t *testing.T) {
