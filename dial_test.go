@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/CanonicalLtd/raft-http"
+	"github.com/mpvl/subtest"
 )
 
 func TestDial(t *testing.T) {
@@ -34,7 +35,7 @@ func TestDial(t *testing.T) {
 		{"tls", rafthttp.NewDialTLS(newTLSConfig()), (*httptest.Server).StartTLS},
 	}
 	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
+		subtest.Run(t, c.name, func(t *testing.T) {
 			server := httptest.NewUnstartedServer(nil)
 			c.start(server)
 			defer server.Close()
@@ -59,7 +60,7 @@ func TestDial_TimeoutError(t *testing.T) {
 		"tls": rafthttp.NewDialTLS(&tls.Config{}),
 	}
 	for name, dial := range cases {
-		t.Run(name, func(t *testing.T) {
+		subtest.Run(t, name, func(t *testing.T) {
 			// Dialing a non-listening port should return
 			// a timeout error.
 			_, err := dial("localhost:0", time.Microsecond)
