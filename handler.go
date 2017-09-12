@@ -26,13 +26,20 @@ type Handler struct {
 // Incoming raft membership requests (received via POST and DELETE) are
 // forwarded to the given channel, which is supposed to be processed using
 // raftmembership.HandleChangeRequests().
-func NewHandler(requests chan *raftmembership.ChangeRequest) *Handler {
+func NewHandler() *Handler {
 	return &Handler{
-		requests:    requests,
+		requests:    make(chan *raftmembership.ChangeRequest),
 		connections: make(chan net.Conn, 0),
 		shutdown:    make(chan struct{}),
 		timeout:     10 * time.Second,
 	}
+}
+
+// Requests returns a channel of inbound Raft membership change requests
+// received over HTTP. Consumer code is supposed to process this channel by
+// invoking raftmembership.HandleChangeRequests.
+func (h *Handler) Requests() <-chan *raftmembership.ChangeRequest {
+	return h.requests
 }
 
 // Timeout sets the maximum amount of time for a request to be processed. It
@@ -45,6 +52,7 @@ func (h *Handler) Timeout(timeout time.Duration) {
 func (h *Handler) Close() {
 	close(h.shutdown)
 	close(h.connections)
+	close(h.requests)
 }
 
 // ServerHTTP upgrades the given HTTP connection to a raw TCP one for
@@ -128,8 +136,9 @@ func (h *Handler) changeMembership(w http.ResponseWriter, r *http.Request, reque
 	case <-h.shutdown:
 		http.Error(w, "raft transport closed", http.StatusForbidden)
 		return
-	case h.requests <- request:
+	default:
 	}
+	h.requests <- request
 
 	err := request.Error(h.timeout)
 	if err == nil {

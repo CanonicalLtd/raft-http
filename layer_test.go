@@ -15,7 +15,7 @@ import (
 
 // The Accept method receives connections from the conns channel.
 func TestLayer_Accept(t *testing.T) {
-	handler := rafthttp.NewHandler(nil)
+	handler := rafthttp.NewHandler()
 	layer := rafthttp.NewLayer("/", nil, handler, nil)
 	server, client := net.Pipe()
 	go func() {
@@ -39,7 +39,7 @@ func TestLayer_Accept(t *testing.T) {
 
 // The Accept method returns an error if the layer was closed.
 func TestLayer_AcceptWhenClosed(t *testing.T) {
-	handler := rafthttp.NewHandler(nil)
+	handler := rafthttp.NewHandler()
 	layer := rafthttp.NewLayer("/", nil, handler, nil)
 	layer.Close()
 	conn, err := layer.Accept()
@@ -53,7 +53,7 @@ func TestLayer_AcceptWhenClosed(t *testing.T) {
 
 // The Close method is a no-op.
 func TestLayer_Close(t *testing.T) {
-	layer := rafthttp.NewLayer("/", nil, rafthttp.NewHandler(nil), nil)
+	layer := rafthttp.NewLayer("/", nil, rafthttp.NewHandler(), nil)
 	if err := layer.Close(); err != nil {
 		t.Fatal(err)
 	}
