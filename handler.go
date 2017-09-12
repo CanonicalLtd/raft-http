@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/CanonicalLtd/raft-membership"
 	"github.com/pkg/errors"
@@ -14,51 +15,42 @@ import (
 // header in the request to switch the HTTP connection to raw TCP
 // mode, so it can be used as raft.NetworkTransport stream.
 type Handler struct {
-	connections chan net.Conn
-	requests    chan *raftmembership.ChangeRequest
-	shutdown    chan struct{}
+	requests    chan *raftmembership.ChangeRequest // Membership requests are pushed to this channel
+	connections chan net.Conn                      // New Raft connections are pushed to this channel.
+	shutdown    chan struct{}                      // Used to stop processing membership requests.
+	timeout     time.Duration                      // Maximum time to wait for requests to be processed.
 }
 
 // NewHandler returns a new Handler.
-func NewHandler() *Handler {
+//
+// Incoming raft membership requests (received via POST and DELETE) are
+// forwarded to the given channel, which is supposed to be processed using
+// raftmembership.HandleChangeRequests().
+func NewHandler(requests chan *raftmembership.ChangeRequest) *Handler {
 	return &Handler{
+		requests:    requests,
 		connections: make(chan net.Conn, 0),
-		requests:    make(chan *raftmembership.ChangeRequest, 0),
 		shutdown:    make(chan struct{}),
+		timeout:     10 * time.Second,
 	}
 }
 
-// Connections returns a channel of net.Conn objects that a Layer can
-// receive from in order to establish new raft TCP connections.
-func (h *Handler) Connections() chan net.Conn {
-	return h.connections
+// Timeout sets the maximum amount of time for a request to be processed. It
+// defaults to 10 seconds if not set.
+func (h *Handler) Timeout(timeout time.Duration) {
+	h.timeout = timeout
 }
 
-// MembershipChangeRequests is a channel of raftmembership.ChangeRequest
-// objects that can be passed to raftmembership.HandleChangeRequests to
-// process join/leave requests.
-func (h *Handler) MembershipChangeRequests() chan *raftmembership.ChangeRequest {
-	return h.requests
-}
-
-// Close closes all channels and stops processing requests.
+// Close stops handling incoming requests.
 func (h *Handler) Close() {
-	close(h.connections)
-	close(h.requests)
 	close(h.shutdown)
+	close(h.connections)
 }
 
 // ServerHTTP upgrades the given HTTP connection to a raw TCP one for
 // use by raft.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Make sure we haven't been closed.
-	select {
-	case <-h.shutdown:
-		http.Error(w, "raft transport closed", http.StatusForbidden)
-		return
-	default:
-	}
-
 	switch r.Method {
 	case "GET":
 		h.handleGet(w, r)
@@ -72,6 +64,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handleGet(w http.ResponseWriter, r *http.Request) {
+	// Fail immediately if we've been closed.
+	select {
+	case <-h.shutdown:
+		http.Error(w, "raft transport closed", http.StatusForbidden)
+		return
+	default:
+	}
+
 	if r.Header.Get("Upgrade") != "raft" {
 		http.Error(w, "missing or invalid upgrade header", http.StatusBadRequest)
 		return
@@ -98,28 +98,40 @@ func (h *Handler) handleGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.connections <- conn
+	select {
+	case h.connections <- conn:
+	case <-time.After(h.timeout):
+		conn.Close()
+	}
 }
 
 func (h *Handler) handlePost(w http.ResponseWriter, r *http.Request) {
 	request := raftmembership.NewJoinRequest(r.URL.Query().Get("peer"))
-	h.processMembershipChangeRequest(w, r, request)
+	h.changeMembership(w, r, request)
 }
 
 func (h *Handler) handleDelete(w http.ResponseWriter, r *http.Request) {
 	request := raftmembership.NewLeaveRequest(r.URL.Query().Get("peer"))
-	h.processMembershipChangeRequest(w, r, request)
+	h.changeMembership(w, r, request)
 }
 
-func (h *Handler) processMembershipChangeRequest(w http.ResponseWriter, r *http.Request, request *raftmembership.ChangeRequest) {
+func (h *Handler) changeMembership(w http.ResponseWriter, r *http.Request, request *raftmembership.ChangeRequest) {
+	// Sanity check before actually trying to process the request.
 	if request.Peer() == "" {
 		http.Error(w, "no peer address provided", http.StatusBadRequest)
 		return
 	}
 
-	h.requests <- request
+	// Send the request to the channel for processing, unless we've been
+	// closed (and in that case we bail out).
+	select {
+	case <-h.shutdown:
+		http.Error(w, "raft transport closed", http.StatusForbidden)
+		return
+	case h.requests <- request:
+	}
 
-	err := request.Error()
+	err := request.Error(h.timeout)
 	if err == nil {
 		return
 	}

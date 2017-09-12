@@ -8,18 +8,18 @@ import (
 	"strings"
 	"time"
 
-	"github.com/CanonicalLtd/raft-http"
-	"github.com/CanonicalLtd/raft-membership"
-	"github.com/CanonicalLtd/raft-test"
+	rafthttp "github.com/CanonicalLtd/raft-http"
+	raftmembership "github.com/CanonicalLtd/raft-membership"
+	rafttest "github.com/CanonicalLtd/raft-test"
 	"github.com/hashicorp/raft"
 )
 
-// Connect two raft nodes using HTTP network layers.
+// Connect threed raft nodes using HTTP network layers.
 func Example() {
 	// Create a 3-node cluster with default test configuration.
 	cluster := rafttest.NewCluster(3)
 
-	// Turn off automatic transports connect
+	// Turn off automatic transports connection.
 	cluster.AutoConnectNodes = false
 
 	node0 := cluster.Node(0)
@@ -31,8 +31,16 @@ func Example() {
 
 	// Replace the default in-memory transports with actual
 	// network transports using HTTP layers.
-	layers := []*rafthttp.Layer{newLayer(), newLayer(), newLayer()}
-	for i, layer := range layers {
+	requests := make([]chan *raftmembership.ChangeRequest, 3)
+	layers := make([]*rafthttp.Layer, 3)
+	for i := range layers {
+		requests[i] = make(chan *raftmembership.ChangeRequest)
+		defer close(requests[i])
+
+		layer, cleanup := newLayer(requests[i])
+		defer cleanup()
+		layers[i] = layer
+
 		node := cluster.Node(i)
 		node.Transport = raft.NewNetworkTransportWithLogger(
 			layer, 2, time.Second, node.Config.Logger)
@@ -41,10 +49,9 @@ func Example() {
 	defer cluster.Shutdown()
 
 	// Start handling membership change requests on all nodes.
-	for i, layer := range layers {
+	for i := range requests {
 		node := cluster.Node(i)
-		requestsCh := layer.MembershipChangeRequests()
-		go raftmembership.HandleChangeRequests(node.Raft(), requestsCh)
+		go raftmembership.HandleChangeRequests(node.Raft(), requests[i])
 	}
 	cluster.LeadershipAcquired()
 
@@ -93,14 +100,19 @@ func Example() {
 
 // Create a new Layer using a new Handler attached to a running HTTP
 // server.
-func newLayer() *rafthttp.Layer {
+func newLayer(requests chan *raftmembership.ChangeRequest) (*rafthttp.Layer, func()) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		log.Fatalf("listening to local port failed: %v", err)
 	}
-	handler := rafthttp.NewHandler()
+	handler := rafthttp.NewHandler(requests)
 	layer := rafthttp.NewLayer("/", listener.Addr(), handler, rafthttp.NewDialTCP())
 	server := &http.Server{Handler: handler}
 	go server.Serve(listener)
-	return layer
+
+	cleanup := func() {
+		listener.Close()
+	}
+
+	return layer, cleanup
 }

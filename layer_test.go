@@ -15,24 +15,31 @@ import (
 
 // The Accept method receives connections from the conns channel.
 func TestLayer_Accept(t *testing.T) {
-	handler := rafthttp.NewHandler()
+	handler := rafthttp.NewHandler(nil)
 	layer := rafthttp.NewLayer("/", nil, handler, nil)
-	want, _ := net.Pipe()
+	server, client := net.Pipe()
 	go func() {
-		handler.Connections() <- want
+		w := newResponseHijacker()
+		w.HijackConn = server
+		r := &http.Request{Method: "GET", Header: make(http.Header)}
+		r.Header.Set("Upgrade", "raft")
+		handler.ServeHTTP(w, r)
 	}()
+	reader := bufio.NewReader(client)
+	reader.ReadString('\n')
+
 	got, err := layer.Accept()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != want {
+	if got != server {
 		t.Fatal("Accept() didn't receive the connection through the conns channel")
 	}
 }
 
 // The Accept method returns an error if the layer was closed.
 func TestLayer_AcceptWhenClosed(t *testing.T) {
-	handler := rafthttp.NewHandler()
+	handler := rafthttp.NewHandler(nil)
 	layer := rafthttp.NewLayer("/", nil, handler, nil)
 	layer.Close()
 	conn, err := layer.Accept()
@@ -46,7 +53,7 @@ func TestLayer_AcceptWhenClosed(t *testing.T) {
 
 // The Close method is a no-op.
 func TestLayer_Close(t *testing.T) {
-	layer := rafthttp.NewLayer("/", nil, rafthttp.NewHandler(), nil)
+	layer := rafthttp.NewLayer("/", nil, rafthttp.NewHandler(nil), nil)
 	if err := layer.Close(); err != nil {
 		t.Fatal(err)
 	}

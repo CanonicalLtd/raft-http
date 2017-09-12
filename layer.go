@@ -36,7 +36,7 @@ type Layer struct {
 
 // Accept waits for the next connection.
 func (l *Layer) Accept() (net.Conn, error) {
-	conn, more := <-l.handler.Connections()
+	conn, more := <-l.handler.connections
 	if !more {
 		return nil, io.EOF
 	}
@@ -93,19 +93,13 @@ func (l *Layer) Dial(addr string, timeout time.Duration) (net.Conn, error) {
 // Join tries to join the cluster by contacting the leader at the
 // given address.
 func (l *Layer) Join(addr string, timeout time.Duration) error {
-	return l.requestMembershipChange(raftmembership.JoinRequest, addr, timeout)
+	return l.changeMemberhip(raftmembership.JoinRequest, addr, timeout)
 }
 
 // Leave tries to leave the cluster by contacting the leader at the
 // given address.
 func (l *Layer) Leave(addr string, timeout time.Duration) error {
-	return l.requestMembershipChange(raftmembership.LeaveRequest, addr, timeout)
-}
-
-// MembershipChangeRequests is a channel of raftmembership.ChangeRequest
-// objects processed by our Handler.
-func (l *Layer) MembershipChangeRequests() chan *raftmembership.ChangeRequest {
-	return l.handler.MembershipChangeRequests()
+	return l.changeMemberhip(raftmembership.LeaveRequest, addr, timeout)
 }
 
 // Build a full url.URL object out of our path.
@@ -118,7 +112,7 @@ func (l *Layer) url() *url.URL {
 }
 
 // Change the membership of the peer associated with this layer.
-func (l *Layer) requestMembershipChange(kind raftmembership.ChangeRequestKind, addr string, timeout time.Duration) error {
+func (l *Layer) changeMemberhip(kind raftmembership.ChangeRequestKind, addr string, timeout time.Duration) error {
 	url := l.url()
 	url.RawQuery = fmt.Sprintf("peer=%s", l.Addr().String())
 	url.Host = addr
