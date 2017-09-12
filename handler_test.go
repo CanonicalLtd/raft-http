@@ -3,11 +3,13 @@ package rafthttp_test
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"testing"
+	"time"
 
 	"github.com/CanonicalLtd/raft-http"
 	"github.com/CanonicalLtd/raft-membership"
@@ -19,7 +21,7 @@ func TestHandler_NoUpgradeHeader(t *testing.T) {
 	// Make a request with no Upgrade header
 	r := &http.Request{Method: "GET"}
 
-	handler := rafthttp.NewHandler()
+	handler := rafthttp.NewHandler(nil)
 	handler.ServeHTTP(w, r)
 
 	responseCheck(t, w, http.StatusBadRequest, "missing or invalid upgrade header\n")
@@ -28,7 +30,7 @@ func TestHandler_NoUpgradeHeader(t *testing.T) {
 func TestHandler_Closed(t *testing.T) {
 	w := httptest.NewRecorder()
 	r := &http.Request{Method: "GET"}
-	handler := rafthttp.NewHandler()
+	handler := rafthttp.NewHandler(nil)
 
 	// Handle the request after the handler is closed
 	handler.Close()
@@ -43,7 +45,7 @@ func TestHandler_HijackerNotImplemented(t *testing.T) {
 
 	r := &http.Request{Method: "GET", Header: make(http.Header)}
 	r.Header.Set("Upgrade", "raft")
-	handler := rafthttp.NewHandler()
+	handler := rafthttp.NewHandler(nil)
 	handler.ServeHTTP(w, r)
 
 	responseCheck(t, w, http.StatusInternalServerError, "webserver doesn't support hijacking\n")
@@ -57,7 +59,7 @@ func TestHandler_HijackError(t *testing.T) {
 
 	r := &http.Request{Method: "GET", Header: make(http.Header)}
 	r.Header.Set("Upgrade", "raft")
-	handler := rafthttp.NewHandler()
+	handler := rafthttp.NewHandler(nil)
 	handler.ServeHTTP(w, r)
 
 	responseCheck(t, &w.ResponseRecorder, http.StatusInternalServerError, "failed to hijack connection: boom\n")
@@ -72,12 +74,40 @@ func TestHandler_HijackConnWriteError(t *testing.T) {
 
 	r := &http.Request{Method: "GET", Header: make(http.Header)}
 	r.Header.Set("Upgrade", "raft")
-	handler := rafthttp.NewHandler()
+	handler := rafthttp.NewHandler(nil)
 	handler.ServeHTTP(w, r)
 
 	// The response has code 200 instead of 101 and the body is
 	// empty.
 	responseCheck(t, &w.ResponseRecorder, http.StatusOK, "")
+}
+
+func TestHandler_ConnectionsTimeout(t *testing.T) {
+	server, client := net.Pipe()
+	w := newResponseHijacker()
+	w.HijackConn = server
+
+	r := &http.Request{Method: "GET", Header: make(http.Header)}
+	r.Header.Set("Upgrade", "raft")
+
+	handler := rafthttp.NewHandler(nil)
+	handler.Timeout(time.Microsecond)
+
+	reader := bufio.NewReader(client)
+	go func() {
+		reader.ReadString('\n')
+	}()
+	handler.ServeHTTP(w, r)
+	n, err := server.Read(make([]byte, 1))
+	if n != 0 {
+		t.Fatalf("read a byte from server connection")
+	}
+	if err == nil {
+		t.Fatalf("no error returned when reading from server connection")
+	}
+	if err != io.ErrClosedPipe {
+		t.Fatalf("got read error %v instead of closed pipe", err)
+	}
 }
 
 func TestHandler_Connections(t *testing.T) {
@@ -89,7 +119,7 @@ func TestHandler_Connections(t *testing.T) {
 	r := &http.Request{Method: "GET", Header: make(http.Header)}
 	r.Header.Set("Upgrade", "raft")
 
-	handler := rafthttp.NewHandler()
+	handler := rafthttp.NewHandler(nil)
 	go handler.ServeHTTP(w, r)
 
 	reader := bufio.NewReader(client)
@@ -123,7 +153,7 @@ func TestHandler_Connections(t *testing.T) {
 func TestHandler_NoPeerProvided(t *testing.T) {
 	w := httptest.NewRecorder()
 	r := &http.Request{Method: "POST", URL: &url.URL{}}
-	handler := rafthttp.NewHandler()
+	handler := rafthttp.NewHandler(nil)
 	handler.ServeHTTP(w, r)
 	body := w.Body.String()
 	if body != "no peer address provided\n" {
@@ -137,13 +167,14 @@ func TestHandler_NoPeerProvided(t *testing.T) {
 func TestHandler_MembershipDeleteFailure(t *testing.T) {
 	w := httptest.NewRecorder()
 	r := &http.Request{Method: "DELETE", URL: &url.URL{RawQuery: "peer=abc"}}
-	handler := rafthttp.NewHandler()
+	requests := make(chan *raftmembership.ChangeRequest)
+	handler := rafthttp.NewHandler(requests)
 
 	// Spawn a memberships request handler that fails when trying
 	// to leave the cluster.
 	done := make(chan bool)
 	go func() {
-		request := <-handler.MembershipChangeRequests()
+		request := <-requests
 		if request.Peer() != "abc" {
 			t.Errorf("unexpected peer: %s", request.Peer())
 		}
@@ -161,16 +192,40 @@ func TestHandler_MembershipDeleteFailure(t *testing.T) {
 	responseCheck(t, w, http.StatusForbidden, "failed to leave peer abc: boom\n")
 }
 
+func TestHandler_MembershipDeleteAfterShutdown(t *testing.T) {
+	w := httptest.NewRecorder()
+	r := &http.Request{Method: "DELETE", URL: &url.URL{RawQuery: "peer=abc"}}
+	handler := rafthttp.NewHandler(nil)
+	handler.Close()
+
+	handler.ServeHTTP(w, r)
+
+	responseCheck(t, w, http.StatusForbidden, "raft transport closed\n")
+}
+
+func TestHandler_MembershipDeleteTimeout(t *testing.T) {
+	w := httptest.NewRecorder()
+	r := &http.Request{Method: "DELETE", URL: &url.URL{RawQuery: "peer=abc"}}
+	requests := make(chan *raftmembership.ChangeRequest, 1)
+	handler := rafthttp.NewHandler(requests)
+	handler.Timeout(time.Microsecond)
+
+	handler.ServeHTTP(w, r)
+
+	responseCheck(t, w, http.StatusForbidden, "failed to leave peer abc: timeout waiting for membership change\n")
+}
+
 func TestHandler_MembershipPostSuccess(t *testing.T) {
 	w := httptest.NewRecorder()
 	r := &http.Request{Method: "POST", URL: &url.URL{RawQuery: "peer=abc"}}
-	handler := rafthttp.NewHandler()
+	requests := make(chan *raftmembership.ChangeRequest)
+	handler := rafthttp.NewHandler(requests)
 
 	// Spawn a memberships request handler that succeeds when trying
 	// to join the cluster.
 	done := make(chan bool)
 	go func() {
-		request := <-handler.MembershipChangeRequests()
+		request := <-requests
 		if request.Peer() != "abc" {
 			t.Errorf("unexpected peer: %s", request.Peer())
 		}
@@ -191,13 +246,14 @@ func TestHandler_MembershipPostSuccess(t *testing.T) {
 func TestHandler_DifferentLeader(t *testing.T) {
 	w := httptest.NewRecorder()
 	r := &http.Request{Method: "POST", URL: &url.URL{RawQuery: "peer=abc"}}
-	handler := rafthttp.NewHandler()
+	requests := make(chan *raftmembership.ChangeRequest)
+	handler := rafthttp.NewHandler(requests)
 
 	// Spawn a memberships request handler that fails because the
 	// node is not the leader and points to the currently known
 	// leader.
 	go func() {
-		request := <-handler.MembershipChangeRequests()
+		request := <-requests
 		request.Done(&raftmembership.ErrDifferentLeader{})
 	}()
 
@@ -209,13 +265,14 @@ func TestHandler_DifferentLeader(t *testing.T) {
 func TestHandler_UnknownLeader(t *testing.T) {
 	w := httptest.NewRecorder()
 	r := &http.Request{Method: "POST", URL: &url.URL{RawQuery: "peer=abc"}}
-	handler := rafthttp.NewHandler()
+	requests := make(chan *raftmembership.ChangeRequest)
+	handler := rafthttp.NewHandler(requests)
 
 	// Spawn a memberships request handler that fails because the
 	// node is not the leader and also does not know who the current
 	// leader is.
 	go func() {
-		request := <-handler.MembershipChangeRequests()
+		request := <-requests
 		request.Done(&raftmembership.ErrUnknownLeader{})
 	}()
 	handler.ServeHTTP(w, r)
@@ -230,7 +287,7 @@ func TestHandler_UnsupportedMethod(t *testing.T) {
 	// Use an unsupported HTTP method.
 	r := &http.Request{Method: "PATCH"}
 
-	handler := rafthttp.NewHandler()
+	handler := rafthttp.NewHandler(nil)
 	handler.ServeHTTP(w, r)
 
 	responseCheck(t, w, http.StatusMethodNotAllowed, "unknown action\n")
@@ -256,9 +313,9 @@ func (r *responseHijacker) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 // Check that a response matches the given HTTP code and body.
 func responseCheck(t *testing.T, w *httptest.ResponseRecorder, code int, body string) {
 	if w.Code != code {
-		t.Errorf("response code mismatch:\nwant: %d\n got: %d", w.Code, code)
+		t.Errorf("response code mismatch:\nwant: %d\n got: %d", code, w.Code)
 	}
 	if w.Body.String() != body {
-		t.Errorf("response body mismatch:\nwant: '%s'\n got: '%s'", w.Body.String(), body)
+		t.Errorf("response body mismatch:\nwant: '%s'\n got: '%s'", body, w.Body.String())
 	}
 }
