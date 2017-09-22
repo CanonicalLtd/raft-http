@@ -1,101 +1,81 @@
 package rafthttp_test
 
 import (
+	"bytes"
 	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"strings"
+	"testing"
 	"time"
 
-	rafthttp "github.com/CanonicalLtd/raft-http"
-	raftmembership "github.com/CanonicalLtd/raft-membership"
-	rafttest "github.com/CanonicalLtd/raft-test"
+	"github.com/CanonicalLtd/raft-http"
+	"github.com/CanonicalLtd/raft-membership"
+	"github.com/CanonicalLtd/raft-test"
 	"github.com/hashicorp/raft"
 )
 
 // Connect threed raft nodes using HTTP network layers.
 func Example() {
-	// Create a 3-node cluster with default test configuration.
-	cluster := rafttest.NewCluster(3)
+	t := &testing.T{}
 
-	// Turn off automatic transports connection.
-	cluster.AutoConnectNodes = false
-
-	node0 := cluster.Node(0)
-	node1 := cluster.Node(1)
-	node2 := cluster.Node(2)
-
-	// Node 0 will self-elect
-	node0.Config.EnableSingleNode = true
-
-	// Replace the default in-memory transports with actual
-	// network transports using HTTP layers.
+	// Create a set of transports using HTTP layers.
 	handlers := make([]*rafthttp.Handler, 3)
 	layers := make([]*rafthttp.Layer, 3)
+	transports := make([]raft.Transport, 3)
+	out := bytes.NewBuffer(nil)
 	for i := range layers {
 		handler := rafthttp.NewHandler()
 		layer, cleanup := newLayer(handler)
 		defer cleanup()
 
-		node := cluster.Node(i)
-		node.Transport = raft.NewNetworkTransportWithLogger(
-			layer, 2, time.Second, node.Config.Logger)
+		transport := raft.NewNetworkTransport(layer, 2, time.Second, out)
 
 		layers[i] = layer
 		handlers[i] = handler
+		transports[i] = transport
 	}
-	cluster.Start()
-	defer cluster.Shutdown()
+
+	// Create a raft.Transport factory that uses the above layers.
+	network := rafttest.Network(
+		rafttest.NoAutoConnect(),
+		rafttest.TransportFactory(func(i int) raft.Transport { return transports[i] }),
+	)
+
+	// Create a 3-node cluster with default test configuration.
+	rafts, cleanup := rafttest.Cluster(t, rafttest.FSMs(3), network)
+	defer cleanup()
 
 	// Start handling membership change requests on all nodes.
 	for i, handler := range handlers {
-		node := cluster.Node(i)
-		go raftmembership.HandleChangeRequests(node.Raft(), handler.Requests())
+		go raftmembership.HandleChangeRequests(rafts[i], handler.Requests())
 	}
-	cluster.LeadershipAcquired()
+
+	rafttest.WaitLeader(t, rafts[0], time.Second)
 
 	// Request that the second node joins the cluster.
-	if err := layers[1].Join(node0.Transport.LocalAddr(), time.Second); err != nil {
+	if err := layers[1].Join(transports[0].LocalAddr(), time.Second); err != nil {
 		log.Fatal(err)
-	}
-	peers, _ := node0.Peers.Peers()
-	if len(peers) != 2 {
-		log.Fatalf("expected node 0 to have 2 peers, got %d", len(peers))
-	}
-	if peer := node1.Transport.LocalAddr(); peer != peers[0] {
-		log.Fatalf("expected node 0 to have peer %s, got %s", peer, peers[0])
 	}
 
 	// Request that the third node joins the cluster, contacting
 	// the non-leader node 1. The request will be automatically
 	// redirected to node 0.
-	if err := layers[2].Join(node1.Transport.LocalAddr(), time.Second); err != nil {
+	if err := layers[2].Join(transports[1].LocalAddr(), time.Second); err != nil {
 		log.Fatal(err)
-	}
-	peers, _ = node0.Peers.Peers()
-	if len(peers) != 3 {
-		log.Fatalf("expected node 0 to have 3 peers, got %d", len(peers))
-	}
-	if peer := node2.Transport.LocalAddr(); peer != peers[0] {
-		log.Fatalf("expected node 0 to have peer %s, got %s", peer, peers[1])
 	}
 
 	// Rquest that the third node leaves the cluster.
-	if err := layers[2].Leave(node0.Transport.LocalAddr(), time.Second); err != nil {
+	if err := layers[2].Leave(transports[2].LocalAddr(), time.Second); err != nil {
 		log.Fatal(err)
-	}
-	peers, _ = node0.Peers.Peers()
-	if len(peers) != 2 {
-		log.Fatalf("expected node 0 to have 1 peers, got %d", len(peers))
-	}
-	if peer := node1.Transport.LocalAddr(); peer != peers[1] {
-		log.Fatalf("expected node 0 to have peer %s, got %s", peer, peers[1])
 	}
 
 	// Output:
 	// true
-	fmt.Printf("%v", strings.Contains(cluster.LogOutput.String(), "entering Leader state"))
+	// 1
+	fmt.Println(strings.Contains(out.String(), "accepted connection from"))
+	fmt.Println(rafts[0].Stats()["num_peers"])
 }
 
 // Create a new Layer using a new Handler attached to a running HTTP
