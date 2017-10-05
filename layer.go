@@ -132,7 +132,13 @@ func (l *Layer) changeMemberhip(kind raftmembership.ChangeRequestKind, addr stri
 	var err error
 	for remaining > 0 {
 		start := time.Now()
-		client := &http.Client{Timeout: remaining}
+		dial := func(network, addr string) (net.Conn, error) {
+			return l.dial(addr, remaining)
+		}
+		client := &http.Client{
+			Timeout:   remaining,
+			Transport: &http.Transport{Dial: dial},
+		}
 		response, err = httpClientDo(client, request)
 
 		// If we got a system or network error, just return it.

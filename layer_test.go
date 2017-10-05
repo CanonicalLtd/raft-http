@@ -237,7 +237,7 @@ func TestLayer_JoinErrorStatusCode(t *testing.T) {
 	defer server.Close()
 
 	addr := server.Listener.Addr()
-	layer := rafthttp.NewLayer("/", addr, nil, nil)
+	layer := rafthttp.NewLayer("/", addr, nil, rafthttp.NewDialTCP())
 	err := layer.Join(addr.String(), time.Second)
 	if err == nil {
 		t.Fatal("Join call did not fail")
@@ -250,7 +250,7 @@ func TestLayer_JoinErrorStatusCode(t *testing.T) {
 // If there's a network failure while leaving, an error is returned.
 func TestLayer_LeaveNetworkError(t *testing.T) {
 	addr := &net.TCPAddr{IP: []byte{0, 0, 0, 0}, Port: 0}
-	layer := rafthttp.NewLayer("/", addr, nil, nil)
+	layer := rafthttp.NewLayer("/", addr, nil, rafthttp.NewDialTCP())
 	err := layer.Leave(addr.String(), time.Second)
 	if err == nil {
 		t.Fatal("Leave call did not fail")
@@ -260,7 +260,7 @@ func TestLayer_LeaveNetworkError(t *testing.T) {
 // If there's a network failure while joining, an error is returned.
 func TestLayer_JoinNetworkError(t *testing.T) {
 	addr := &net.TCPAddr{IP: []byte{0, 0, 0, 0}, Port: 0}
-	layer := rafthttp.NewLayer("/", addr, nil, nil)
+	layer := rafthttp.NewLayer("/", addr, nil, rafthttp.NewDialTCP())
 	err := layer.Join(addr.String(), time.Second)
 	if err == nil {
 		t.Fatal("Join call did not fail")
@@ -277,7 +277,7 @@ func TestLayer_JoinLocationParseError(t *testing.T) {
 	defer server.Close()
 
 	addr := server.Listener.Addr()
-	layer := rafthttp.NewLayer("/", addr, nil, nil)
+	layer := rafthttp.NewLayer("/", addr, nil, rafthttp.NewDialTCP())
 	if err := layer.Join(addr.String(), time.Second); err == nil {
 		t.Fatal("Join call did not fail")
 	}
@@ -295,7 +295,7 @@ func TestLayer_JoinRetryIfServiceUnavailable(t *testing.T) {
 	defer server.Close()
 
 	addr := server.Listener.Addr()
-	layer := rafthttp.NewLayer("/", addr, nil, nil)
+	layer := rafthttp.NewLayer("/", addr, nil, rafthttp.NewDialTCP())
 	if err := layer.Join(addr.String(), time.Second); err != nil {
 		t.Fatalf("Join request failed although it was supposed to retry: %v", err)
 	}
