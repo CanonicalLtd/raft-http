@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/CanonicalLtd/raft-membership"
+	"github.com/hashicorp/raft"
 	"github.com/pkg/errors"
 )
 
@@ -55,7 +56,7 @@ func (l *Layer) Addr() net.Addr {
 }
 
 // Dial creates a new network connection.
-func (l *Layer) Dial(addr string, timeout time.Duration) (net.Conn, error) {
+func (l *Layer) Dial(addr raft.ServerAddress, timeout time.Duration) (net.Conn, error) {
 	url := l.url()
 	request := &http.Request{
 		Method:     "GET",
@@ -68,7 +69,7 @@ func (l *Layer) Dial(addr string, timeout time.Duration) (net.Conn, error) {
 	}
 	request.Header.Set("Upgrade", "raft")
 
-	conn, err := l.dial(addr, timeout)
+	conn, err := l.dial(string(addr), timeout)
 	if err != nil {
 		return nil, errors.Wrap(err, "dialing failed")
 	}
@@ -92,13 +93,13 @@ func (l *Layer) Dial(addr string, timeout time.Duration) (net.Conn, error) {
 
 // Join tries to join the cluster by contacting the leader at the
 // given address.
-func (l *Layer) Join(addr string, timeout time.Duration) error {
+func (l *Layer) Join(addr raft.ServerAddress, timeout time.Duration) error {
 	return l.changeMemberhip(raftmembership.JoinRequest, addr, timeout)
 }
 
 // Leave tries to leave the cluster by contacting the leader at the
 // given address.
-func (l *Layer) Leave(addr string, timeout time.Duration) error {
+func (l *Layer) Leave(addr raft.ServerAddress, timeout time.Duration) error {
 	return l.changeMemberhip(raftmembership.LeaveRequest, addr, timeout)
 }
 
@@ -112,10 +113,10 @@ func (l *Layer) url() *url.URL {
 }
 
 // Change the membership of the peer associated with this layer.
-func (l *Layer) changeMemberhip(kind raftmembership.ChangeRequestKind, addr string, timeout time.Duration) error {
+func (l *Layer) changeMemberhip(kind raftmembership.ChangeRequestKind, addr raft.ServerAddress, timeout time.Duration) error {
 	url := l.url()
 	url.RawQuery = fmt.Sprintf("peer=%s", l.Addr().String())
-	url.Host = addr
+	url.Host = string(addr)
 	url.Scheme = "http"
 	method := membershipChangeRequestKindToMethod[kind]
 	request := &http.Request{
