@@ -55,19 +55,19 @@ func Example() {
 	rafttest.WaitLeader(t, rafts[0], time.Second)
 
 	// Request that the second node joins the cluster.
-	if err := layers[1].Join(transports[0].LocalAddr(), time.Second); err != nil {
-		log.Fatal(err)
+	if err := layers[1].Join("1", transports[0].LocalAddr(), time.Second); err != nil {
+		log.Fatalf("joining server 1 failed: %v", err)
 	}
 
 	// Request that the third node joins the cluster, contacting
 	// the non-leader node 1. The request will be automatically
 	// redirected to node 0.
-	if err := layers[2].Join(transports[1].LocalAddr(), time.Second); err != nil {
+	if err := layers[2].Join("2", transports[1].LocalAddr(), time.Second); err != nil {
 		log.Fatal(err)
 	}
 
 	// Rquest that the third node leaves the cluster.
-	if err := layers[2].Leave(transports[2].LocalAddr(), time.Second); err != nil {
+	if err := layers[2].Leave("2", transports[2].LocalAddr(), time.Second); err != nil {
 		log.Fatal(err)
 	}
 

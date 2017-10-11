@@ -91,16 +91,18 @@ func (l *Layer) Dial(addr raft.ServerAddress, timeout time.Duration) (net.Conn, 
 	return conn, err
 }
 
-// Join tries to join the cluster by contacting the leader at the
-// given address.
-func (l *Layer) Join(addr raft.ServerAddress, timeout time.Duration) error {
-	return l.changeMemberhip(raftmembership.JoinRequest, addr, timeout)
+// Join tries to join the cluster by contacting the leader at the given
+// address. The raft node associated with this layer must have the given server
+// identity.
+func (l *Layer) Join(id raft.ServerID, addr raft.ServerAddress, timeout time.Duration) error {
+	return l.changeMemberhip(raftmembership.JoinRequest, id, addr, timeout)
 }
 
-// Leave tries to leave the cluster by contacting the leader at the
-// given address.
-func (l *Layer) Leave(addr raft.ServerAddress, timeout time.Duration) error {
-	return l.changeMemberhip(raftmembership.LeaveRequest, addr, timeout)
+// Leave tries to leave the cluster by contacting the leader at the given
+// address.  The raft node associated with this layer must have the given
+// server identity.
+func (l *Layer) Leave(id raft.ServerID, addr raft.ServerAddress, timeout time.Duration) error {
+	return l.changeMemberhip(raftmembership.LeaveRequest, id, addr, timeout)
 }
 
 // Build a full url.URL object out of our path.
@@ -112,10 +114,13 @@ func (l *Layer) url() *url.URL {
 	return url
 }
 
-// Change the membership of the peer associated with this layer.
-func (l *Layer) changeMemberhip(kind raftmembership.ChangeRequestKind, addr raft.ServerAddress, timeout time.Duration) error {
+// Change the membership of the server associated with this layer.
+func (l *Layer) changeMemberhip(kind raftmembership.ChangeRequestKind, id raft.ServerID, addr raft.ServerAddress, timeout time.Duration) error {
 	url := l.url()
-	url.RawQuery = fmt.Sprintf("peer=%s", l.Addr().String())
+	url.RawQuery = fmt.Sprintf("id=%s", id)
+	if kind == raftmembership.JoinRequest {
+		url.RawQuery += fmt.Sprintf("&address=%s", l.Addr().String())
+	}
 	url.Host = string(addr)
 	url.Scheme = "http"
 	method := membershipChangeRequestKindToMethod[kind]
@@ -169,7 +174,7 @@ func (l *Layer) changeMemberhip(kind raftmembership.ChangeRequestKind, addr raft
 		break
 	}
 	if err != nil {
-		return errors.Wrap(err, fmt.Sprintf("peer %s failed", kind))
+		return errors.Wrap(err, fmt.Sprintf("server %s failed", kind))
 	}
 	return nil
 }

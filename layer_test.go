@@ -239,11 +239,11 @@ func TestLayer_JoinErrorStatusCode(t *testing.T) {
 
 	addr := server.Listener.Addr()
 	layer := rafthttp.NewLayer("/", addr, nil, rafthttp.NewDialTCP())
-	err := layer.Join(raftAddress(addr), time.Second)
+	err := layer.Join("1", raftAddress(addr), time.Second)
 	if err == nil {
 		t.Fatal("Join call did not fail")
 	}
-	if err.Error() != fmt.Sprintf("peer join failed: http code 404 '404 page not found'") {
+	if err.Error() != fmt.Sprintf("server join failed: http code 404 '404 page not found'") {
 		t.Fatalf("Got unexpected error: %v", err)
 	}
 }
@@ -252,7 +252,7 @@ func TestLayer_JoinErrorStatusCode(t *testing.T) {
 func TestLayer_LeaveNetworkError(t *testing.T) {
 	addr := &net.TCPAddr{IP: []byte{0, 0, 0, 0}, Port: 0}
 	layer := rafthttp.NewLayer("/", addr, nil, rafthttp.NewDialTCP())
-	err := layer.Leave(raftAddress(addr), time.Second)
+	err := layer.Leave("1", raftAddress(addr), time.Second)
 	if err == nil {
 		t.Fatal("Leave call did not fail")
 	}
@@ -262,7 +262,7 @@ func TestLayer_LeaveNetworkError(t *testing.T) {
 func TestLayer_JoinNetworkError(t *testing.T) {
 	addr := &net.TCPAddr{IP: []byte{0, 0, 0, 0}, Port: 0}
 	layer := rafthttp.NewLayer("/", addr, nil, rafthttp.NewDialTCP())
-	err := layer.Join(raftAddress(addr), time.Second)
+	err := layer.Join("1", raftAddress(addr), time.Second)
 	if err == nil {
 		t.Fatal("Join call did not fail")
 	}
@@ -279,7 +279,7 @@ func TestLayer_JoinLocationParseError(t *testing.T) {
 
 	addr := server.Listener.Addr()
 	layer := rafthttp.NewLayer("/", addr, nil, rafthttp.NewDialTCP())
-	if err := layer.Join(raftAddress(addr), time.Second); err == nil {
+	if err := layer.Join("1", raftAddress(addr), time.Second); err == nil {
 		t.Fatal("Join call did not fail")
 	}
 }
@@ -297,7 +297,7 @@ func TestLayer_JoinRetryIfServiceUnavailable(t *testing.T) {
 
 	addr := server.Listener.Addr()
 	layer := rafthttp.NewLayer("/", addr, nil, rafthttp.NewDialTCP())
-	if err := layer.Join(raftAddress(addr), time.Second); err != nil {
+	if err := layer.Join("1", raftAddress(addr), time.Second); err != nil {
 		t.Fatalf("Join request failed although it was supposed to retry: %v", err)
 	}
 }
