@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/CanonicalLtd/raft-membership"
+	"github.com/hashicorp/raft"
 	"github.com/pkg/errors"
 )
 
@@ -114,19 +115,24 @@ func (h *Handler) handleGet(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handlePost(w http.ResponseWriter, r *http.Request) {
-	request := raftmembership.NewJoinRequest(r.URL.Query().Get("peer"))
+	query := r.URL.Query()
+	id := raft.ServerID(query.Get("id"))
+	address := raft.ServerAddress(query.Get("address"))
+	request := raftmembership.NewJoinRequest(id, address)
 	h.changeMembership(w, r, request)
 }
 
 func (h *Handler) handleDelete(w http.ResponseWriter, r *http.Request) {
-	request := raftmembership.NewLeaveRequest(r.URL.Query().Get("peer"))
+	query := r.URL.Query()
+	id := raft.ServerID(query.Get("id"))
+	request := raftmembership.NewLeaveRequest(id)
 	h.changeMembership(w, r, request)
 }
 
 func (h *Handler) changeMembership(w http.ResponseWriter, r *http.Request, request *raftmembership.ChangeRequest) {
 	// Sanity check before actually trying to process the request.
-	if request.Peer() == "" {
-		http.Error(w, "no peer address provided", http.StatusBadRequest)
+	if request.ID() == "" {
+		http.Error(w, "no server ID provided", http.StatusBadRequest)
 		return
 	}
 
@@ -168,6 +174,6 @@ func (h *Handler) changeMembership(w http.ResponseWriter, r *http.Request, reque
 	}
 
 	message := errors.Wrap(err, fmt.Sprintf(
-		"failed to %s peer %s", request.Kind(), request.Peer())).Error()
+		"failed to %s server %s", request.Kind(), request.ID())).Error()
 	http.Error(w, message, code)
 }

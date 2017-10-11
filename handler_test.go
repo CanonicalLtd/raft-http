@@ -148,15 +148,15 @@ func TestHandler_Connections(t *testing.T) {
 	}
 }
 
-// If the peer is not provided as query parameter when joining or
+// If the server ID is not provided as query parameter when joining or
 // leaving, an error is returned.
-func TestHandler_NoPeerProvided(t *testing.T) {
+func TestHandler_NoServerIDProvided(t *testing.T) {
 	w := httptest.NewRecorder()
 	r := &http.Request{Method: "POST", URL: &url.URL{}}
 	handler := rafthttp.NewHandler()
 	handler.ServeHTTP(w, r)
 	body := w.Body.String()
-	if body != "no peer address provided\n" {
+	if body != "no server ID provided\n" {
 		t.Fatalf("Unexpected body content: '%s'", body)
 	}
 	if w.Code != http.StatusBadRequest {
@@ -166,7 +166,7 @@ func TestHandler_NoPeerProvided(t *testing.T) {
 
 func TestHandler_MembershipDeleteFailure(t *testing.T) {
 	w := httptest.NewRecorder()
-	r := &http.Request{Method: "DELETE", URL: &url.URL{RawQuery: "peer=abc"}}
+	r := &http.Request{Method: "DELETE", URL: &url.URL{RawQuery: "id=999"}}
 	handler := rafthttp.NewHandler()
 
 	// Spawn a memberships request handler that fails when trying
@@ -174,8 +174,8 @@ func TestHandler_MembershipDeleteFailure(t *testing.T) {
 	done := make(chan bool)
 	go func() {
 		request := <-handler.Requests()
-		if request.Peer() != "abc" {
-			t.Errorf("unexpected peer: %s", request.Peer())
+		if request.ID() != "999" {
+			t.Errorf("unexpected id: %s", request.ID())
 		}
 		if kind := request.Kind(); kind != raftmembership.LeaveRequest {
 			t.Errorf("request kind is not leave: %s", kind)
@@ -188,12 +188,12 @@ func TestHandler_MembershipDeleteFailure(t *testing.T) {
 		t.Fatalf("memberships channel not triggered")
 	}
 
-	responseCheck(t, w, http.StatusForbidden, "failed to leave peer abc: boom\n")
+	responseCheck(t, w, http.StatusForbidden, "failed to leave server 999: boom\n")
 }
 
 func TestHandler_MembershipDeleteAfterShutdown(t *testing.T) {
 	w := httptest.NewRecorder()
-	r := &http.Request{Method: "DELETE", URL: &url.URL{RawQuery: "peer=abc"}}
+	r := &http.Request{Method: "DELETE", URL: &url.URL{RawQuery: "id=999"}}
 	handler := rafthttp.NewHandler()
 	handler.Close()
 
@@ -204,7 +204,7 @@ func TestHandler_MembershipDeleteAfterShutdown(t *testing.T) {
 
 func TestHandler_MembershipDeleteTimeout(t *testing.T) {
 	w := httptest.NewRecorder()
-	r := &http.Request{Method: "DELETE", URL: &url.URL{RawQuery: "peer=abc"}}
+	r := &http.Request{Method: "DELETE", URL: &url.URL{RawQuery: "id=666"}}
 	handler := rafthttp.NewHandler()
 	handler.Timeout(time.Microsecond)
 	go func() {
@@ -212,12 +212,12 @@ func TestHandler_MembershipDeleteTimeout(t *testing.T) {
 	}()
 	handler.ServeHTTP(w, r)
 
-	responseCheck(t, w, http.StatusForbidden, "failed to leave peer abc: timeout waiting for membership change\n")
+	responseCheck(t, w, http.StatusForbidden, "failed to leave server 666: timeout waiting for membership change\n")
 }
 
 func TestHandler_MembershipPostSuccess(t *testing.T) {
 	w := httptest.NewRecorder()
-	r := &http.Request{Method: "POST", URL: &url.URL{RawQuery: "peer=abc"}}
+	r := &http.Request{Method: "POST", URL: &url.URL{RawQuery: "id=666&address=abc"}}
 	handler := rafthttp.NewHandler()
 
 	// Spawn a memberships request handler that succeeds when trying
@@ -225,8 +225,11 @@ func TestHandler_MembershipPostSuccess(t *testing.T) {
 	done := make(chan bool)
 	go func() {
 		request := <-handler.Requests()
-		if request.Peer() != "abc" {
-			t.Errorf("unexpected peer: %s", request.Peer())
+		if request.ID() != "666" {
+			t.Errorf("unexpected ID: %s", request.ID())
+		}
+		if request.Address() != "abc" {
+			t.Errorf("unexpected server: %s", request.Address())
 		}
 		if kind := request.Kind(); kind != raftmembership.JoinRequest {
 			t.Errorf("request kind is not join: %s", kind)
@@ -244,7 +247,7 @@ func TestHandler_MembershipPostSuccess(t *testing.T) {
 
 func TestHandler_DifferentLeader(t *testing.T) {
 	w := httptest.NewRecorder()
-	r := &http.Request{Method: "POST", URL: &url.URL{RawQuery: "peer=abc"}}
+	r := &http.Request{Method: "POST", URL: &url.URL{RawQuery: "id=666&address=abc"}}
 	handler := rafthttp.NewHandler()
 
 	// Spawn a memberships request handler that fails because the
@@ -262,7 +265,7 @@ func TestHandler_DifferentLeader(t *testing.T) {
 
 func TestHandler_UnknownLeader(t *testing.T) {
 	w := httptest.NewRecorder()
-	r := &http.Request{Method: "POST", URL: &url.URL{RawQuery: "peer=abc"}}
+	r := &http.Request{Method: "POST", URL: &url.URL{RawQuery: "id=666&address=abc"}}
 	handler := rafthttp.NewHandler()
 
 	// Spawn a memberships request handler that fails because the
@@ -275,7 +278,7 @@ func TestHandler_UnknownLeader(t *testing.T) {
 	handler.ServeHTTP(w, r)
 
 	responseCheck(t, w, http.StatusServiceUnavailable,
-		"failed to join peer abc: node is not leader, current leader unknown\n")
+		"failed to join server 666: node is not leader, current leader unknown\n")
 }
 
 func TestHandler_UnsupportedMethod(t *testing.T) {
