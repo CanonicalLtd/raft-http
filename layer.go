@@ -4,11 +4,8 @@ import (
 	"bufio"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"net/http"
-	"net/url"
-	"strings"
 	"time"
 
 	"github.com/CanonicalLtd/raft-membership"
@@ -57,7 +54,7 @@ func (l *Layer) Addr() net.Addr {
 
 // Dial creates a new network connection.
 func (l *Layer) Dial(addr raft.ServerAddress, timeout time.Duration) (net.Conn, error) {
-	url := l.url()
+	url := makeURL(l.path)
 	request := &http.Request{
 		Method:     "GET",
 		URL:        url,
@@ -105,78 +102,9 @@ func (l *Layer) Leave(id raft.ServerID, addr raft.ServerAddress, timeout time.Du
 	return l.changeMemberhip(raftmembership.LeaveRequest, id, addr, timeout)
 }
 
-// Build a full url.URL object out of our path.
-func (l *Layer) url() *url.URL {
-	url, err := url.Parse(l.path)
-	if err != nil {
-		panic(fmt.Sprintf("invalid URL path %s", l.path))
-	}
-	return url
-}
-
 // Change the membership of the server associated with this layer.
 func (l *Layer) changeMemberhip(kind raftmembership.ChangeRequestKind, id raft.ServerID, addr raft.ServerAddress, timeout time.Duration) error {
-	url := l.url()
-	url.RawQuery = fmt.Sprintf("id=%s", id)
-	if kind == raftmembership.JoinRequest {
-		url.RawQuery += fmt.Sprintf("&address=%s", l.Addr().String())
-	}
-	url.Host = string(addr)
-	url.Scheme = "http"
-	method := membershipChangeRequestKindToMethod[kind]
-	request := &http.Request{
-		Method:     method,
-		URL:        url,
-		Proto:      "HTTP/1.1",
-		ProtoMajor: 1,
-		ProtoMinor: 1,
-		Header:     make(http.Header),
-	}
-
-	remaining := timeout
-	var response *http.Response
-	var err error
-	for remaining > 0 {
-		start := time.Now()
-		dial := func(network, addr string) (net.Conn, error) {
-			return l.dial(addr, remaining)
-		}
-		client := &http.Client{
-			Timeout:   remaining,
-			Transport: &http.Transport{Dial: dial},
-		}
-		response, err = httpClientDo(client, request)
-
-		// If we got a system or network error, just return it.
-		if err != nil {
-			break
-		}
-
-		// If we got an HTTP error, let's capture its details,
-		// and possibly return it if it's not retriable or we
-		// have hit our timeout.
-		if response.StatusCode != http.StatusOK {
-			body, _ := ioutil.ReadAll(response.Body)
-			err = fmt.Errorf(
-				"http code %d '%s'", response.StatusCode,
-				strings.TrimSpace(string(body)))
-		}
-		// If there's a temporary failure, let's retry.
-		if response.StatusCode == http.StatusServiceUnavailable {
-			// XXX TODO: use an exponential backoff
-			// relative to the timeout?
-			time.Sleep(100 * time.Millisecond)
-
-			remaining -= time.Since(start)
-			continue
-		}
-
-		break
-	}
-	if err != nil {
-		return errors.Wrap(err, fmt.Sprintf("server %s failed", kind))
-	}
-	return nil
+	return ChangeMembership(kind, l.path, l.dial, id, l.Addr().String(), string(addr), timeout)
 }
 
 // Map a membership ChangeRequest kind code to an HTTP method name.
