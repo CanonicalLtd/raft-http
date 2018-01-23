@@ -38,13 +38,11 @@ func Example() {
 	}
 
 	// Create a raft.Transport factory that uses the above layers.
-	network := rafttest.Network(
-		rafttest.NoAutoConnect(),
-		rafttest.TransportFactory(func(i int) raft.Transport { return transports[i] }),
-	)
+	transport := rafttest.Transport(func(i int) raft.Transport { return transports[i] })
+	servers := rafttest.Servers(0)
 
 	// Create a 3-node cluster with default test configuration.
-	rafts, cleanup := rafttest.Cluster(t, rafttest.FSMs(3), network)
+	rafts, cleanup := rafttest.Cluster(t, rafttest.FSMs(3), transport, servers)
 	defer cleanup()
 
 	// Start handling membership change requests on all nodes.
