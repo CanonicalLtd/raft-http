@@ -14,6 +14,7 @@ import (
 	"github.com/CanonicalLtd/raft-membership"
 	"github.com/CanonicalLtd/raft-test"
 	"github.com/hashicorp/raft"
+	"github.com/stretchr/testify/require"
 )
 
 // Connect threed raft nodes using HTTP network layers.
@@ -42,7 +43,8 @@ func Example() {
 	servers := rafttest.Servers(0)
 
 	// Create a 3-node cluster with default test configuration.
-	rafts, cleanup := rafttest.Cluster(t, rafttest.FSMs(3), transport, servers)
+	notify := rafttest.Notify()
+	rafts, cleanup := rafttest.Cluster(t, rafttest.FSMs(3), transport, servers, notify)
 	defer cleanup()
 
 	// Start handling membership change requests on all nodes.
@@ -50,7 +52,10 @@ func Example() {
 		go raftmembership.HandleChangeRequests(rafts[i], handler.Requests())
 	}
 
-	rafttest.WaitLeader(t, rafts[0], time.Second)
+	// Node 0 is the one supposed to get leadership, since it's currently
+	// the only one in the cluster.
+	i := notify.NextAcquired(time.Second)
+	require.Equal(t, 0, i)
 
 	// Request that the second node joins the cluster.
 	if err := layers[1].Join("1", transports[0].LocalAddr(), time.Second); err != nil {
