@@ -273,7 +273,7 @@ func TestLayer_JoinNetworkError(t *testing.T) {
 func TestLayer_JoinLocationParseError(t *testing.T) {
 	// Setup a handler that returns an invalid Location.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, ":/%:not\a/url", rafthttp.StatusPermanentRedirect)
+		http.Redirect(w, r, ":/%:not\a/url", http.StatusPermanentRedirect)
 	}))
 	defer server.Close()
 

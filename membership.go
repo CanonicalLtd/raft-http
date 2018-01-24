@@ -51,7 +51,7 @@ func ChangeMembership(
 			Timeout:   remaining,
 			Transport: &http.Transport{Dial: dial},
 		}
-		response, err = httpClientDo(client, request)
+		response, err = client.Do(request)
 
 		// If we got a system or network error, just return it.
 		if err != nil {

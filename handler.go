@@ -163,7 +163,7 @@ func (h *Handler) changeMembership(w http.ResponseWriter, r *http.Request, reque
 			RawQuery: r.URL.RawQuery,
 			Host:     err.Leader(),
 		}
-		http.Redirect(w, r, url.String(), StatusPermanentRedirect)
+		http.Redirect(w, r, url.String(), http.StatusPermanentRedirect)
 		return
 	case *raftmembership.ErrUnknownLeader:
 		// If we fail because we currently don't know the leader, hint

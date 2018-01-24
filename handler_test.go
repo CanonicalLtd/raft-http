@@ -260,7 +260,7 @@ func TestHandler_DifferentLeader(t *testing.T) {
 
 	handler.ServeHTTP(w, r)
 
-	responseCheck(t, w, rafthttp.StatusPermanentRedirect, "")
+	responseCheck(t, w, http.StatusPermanentRedirect, "")
 }
 
 func TestHandler_UnknownLeader(t *testing.T) {
