@@ -4,8 +4,10 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/CanonicalLtd/raft-membership"
@@ -16,11 +18,18 @@ import (
 // NewLayer returns a new raft stream layer that initiates connections
 // with HTTP and then uses Upgrade to switch them into raw TCP.
 func NewLayer(path string, localAddr net.Addr, handler *Handler, dial Dial) *Layer {
+	logger := log.New(os.Stderr, "", log.LstdFlags)
+	return NewLayerWithLogger(path, localAddr, handler, dial, logger)
+}
+
+// NewLayerWithLogger returns a Layer using the specified logger.
+func NewLayerWithLogger(path string, localAddr net.Addr, handler *Handler, dial Dial, logger *log.Logger) *Layer {
 	return &Layer{
 		path:      path,
 		localAddr: localAddr,
 		handler:   handler,
 		dial:      dial,
+		logger:    logger,
 	}
 }
 
@@ -30,6 +39,7 @@ type Layer struct {
 	localAddr net.Addr
 	handler   *Handler
 	dial      Dial
+	logger    *log.Logger
 }
 
 // Accept waits for the next connection.
@@ -54,6 +64,8 @@ func (l *Layer) Addr() net.Addr {
 
 // Dial creates a new network connection.
 func (l *Layer) Dial(addr raft.ServerAddress, timeout time.Duration) (net.Conn, error) {
+	l.logger.Printf("[INFO] raft-http: Connecting to %s", addr)
+
 	url := makeURL(l.path)
 	request := &http.Request{
 		Method:     "GET",
@@ -92,6 +104,8 @@ func (l *Layer) Dial(addr raft.ServerAddress, timeout time.Duration) (net.Conn, 
 // address. The raft node associated with this layer must have the given server
 // identity.
 func (l *Layer) Join(id raft.ServerID, addr raft.ServerAddress, timeout time.Duration) error {
+	l.logger.Printf("[INFO] raft-http: Joining cluster at %s as node %s", addr, id)
+
 	return l.changeMemberhip(raftmembership.JoinRequest, id, addr, timeout)
 }
 
@@ -99,6 +113,8 @@ func (l *Layer) Join(id raft.ServerID, addr raft.ServerAddress, timeout time.Dur
 // address.  The raft node associated with this layer must have the given
 // server identity.
 func (l *Layer) Leave(id raft.ServerID, addr raft.ServerAddress, timeout time.Duration) error {
+	l.logger.Printf("[INFO] raft-http: Leaving cluster at %s as node %s", addr, id)
+
 	return l.changeMemberhip(raftmembership.LeaveRequest, id, addr, timeout)
 }
 

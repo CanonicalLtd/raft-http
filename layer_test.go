@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/CanonicalLtd/raft-http"
+	"github.com/CanonicalLtd/raft-test"
 	"github.com/hashicorp/raft"
 )
 
@@ -300,6 +302,12 @@ func TestLayer_JoinRetryIfServiceUnavailable(t *testing.T) {
 	if err := layer.Join("1", raftAddress(addr), time.Second); err != nil {
 		t.Fatalf("Join request failed although it was supposed to retry: %v", err)
 	}
+}
+
+// Wrapper around NewLayerWithLogger that writes logs using the test logger.
+func newLayer(t *testing.T, localAddr net.Addr, handler *rafthttp.Handler, dial rafthttp.Dial) *rafthttp.Layer {
+	logger := log.New(rafttest.TestingWriter(t), "", 0)
+	return rafthttp.NewLayerWithLogger("/", localAddr, handler, dial, logger)
 }
 
 // Covert a net.Addr to raft.ServerAddress

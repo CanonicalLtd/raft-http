@@ -1,3 +1,17 @@
+// Copyright 2017 Canonical Ltd.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package rafthttp_test
 
 import (
@@ -28,7 +42,7 @@ func Example() {
 	out := bytes.NewBuffer(nil)
 	for i := range layers {
 		handler := rafthttp.NewHandler()
-		layer, cleanup := newLayer(handler)
+		layer, cleanup := newExampleLayer(handler)
 		defer cleanup()
 
 		transport := raft.NewNetworkTransport(layer, 2, time.Second, out)
@@ -83,7 +97,7 @@ func Example() {
 
 // Create a new Layer using a new Handler attached to a running HTTP
 // server.
-func newLayer(handler *rafthttp.Handler) (*rafthttp.Layer, func()) {
+func newExampleLayer(handler *rafthttp.Handler) (*rafthttp.Layer, func()) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		log.Fatalf("listening to local port failed: %v", err)
