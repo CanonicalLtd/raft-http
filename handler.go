@@ -2,9 +2,11 @@ package rafthttp
 
 import (
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"time"
 
 	"github.com/CanonicalLtd/raft-membership"
@@ -20,6 +22,7 @@ type Handler struct {
 	connections chan net.Conn                      // New Raft connections are pushed to this channel.
 	shutdown    chan struct{}                      // Used to stop processing membership requests.
 	timeout     time.Duration                      // Maximum time to wait for requests to be processed.
+	logger      *log.Logger                        // Logger to use.
 }
 
 // NewHandler returns a new Handler.
@@ -28,11 +31,18 @@ type Handler struct {
 // forwarded to the given channel, which is supposed to be processed using
 // raftmembership.HandleChangeRequests().
 func NewHandler() *Handler {
+	logger := log.New(os.Stderr, "", log.LstdFlags)
+	return NewHandlerWithLogger(logger)
+}
+
+// NewHandlerWithLogger returns a new Handler configured with the given logger.
+func NewHandlerWithLogger(logger *log.Logger) *Handler {
 	return &Handler{
 		requests:    make(chan *raftmembership.ChangeRequest),
 		connections: make(chan net.Conn, 0),
 		shutdown:    make(chan struct{}),
 		timeout:     10 * time.Second,
+		logger:      logger,
 	}
 }
 
@@ -59,7 +69,6 @@ func (h *Handler) Close() {
 // ServerHTTP upgrades the given HTTP connection to a raw TCP one for
 // use by raft.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// Make sure we haven't been closed.
 	switch r.Method {
 	case "GET":
 		h.handleGet(w, r)
@@ -107,9 +116,11 @@ func (h *Handler) handleGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.logger.Printf("[INFO] raft-http: Establishing new connection with %s", r.Host)
 	select {
 	case h.connections <- conn:
 	case <-time.After(h.timeout):
+		h.logger.Printf("[ERR] raft-http: Connection from %s not processed within %s", r.Host, h.timeout)
 		conn.Close()
 	}
 }
@@ -118,6 +129,9 @@ func (h *Handler) handlePost(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 	id := raft.ServerID(query.Get("id"))
 	address := raft.ServerAddress(query.Get("address"))
+
+	h.logger.Printf("[INFO] raft-http: Handling join request for node %s (%s)", id, address)
+
 	request := raftmembership.NewJoinRequest(id, address)
 	h.changeMembership(w, r, request)
 }
@@ -125,6 +139,9 @@ func (h *Handler) handlePost(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) handleDelete(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 	id := raft.ServerID(query.Get("id"))
+
+	h.logger.Printf("[INFO] raft-http: Handling leave request for node %s", id)
+
 	request := raftmembership.NewLeaveRequest(id)
 	h.changeMembership(w, r, request)
 }
