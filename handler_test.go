@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -14,7 +13,6 @@ import (
 
 	"github.com/CanonicalLtd/raft-http"
 	"github.com/CanonicalLtd/raft-membership"
-	"github.com/CanonicalLtd/raft-test"
 )
 
 func TestHandler_NoUpgradeHeader(t *testing.T) {
@@ -23,7 +21,7 @@ func TestHandler_NoUpgradeHeader(t *testing.T) {
 	// Make a request with no Upgrade header
 	r := &http.Request{Method: "GET"}
 
-	handler := newHandler(t)
+	handler := rafthttp.NewTestingHandler(t)
 	handler.ServeHTTP(w, r)
 
 	responseCheck(t, w, http.StatusBadRequest, "missing or invalid upgrade header\n")
@@ -293,12 +291,6 @@ func TestHandler_UnsupportedMethod(t *testing.T) {
 	handler.ServeHTTP(w, r)
 
 	responseCheck(t, w, http.StatusMethodNotAllowed, "unknown action\n")
-}
-
-// Wrapper around NewHandlerWithLogger that writes logs using the test logger.
-func newHandler(t *testing.T) *rafthttp.Handler {
-	logger := log.New(rafttest.TestingWriter(t), "", 0)
-	return rafthttp.NewHandlerWithLogger(logger)
 }
 
 // A test response implementing the http.Hijacker interface.

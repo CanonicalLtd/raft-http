@@ -2,11 +2,11 @@ package rafthttp
 
 import (
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
 	"net/url"
-	"os"
 	"time"
 
 	"github.com/CanonicalLtd/raft-membership"
@@ -31,7 +31,8 @@ type Handler struct {
 // forwarded to the given channel, which is supposed to be processed using
 // raftmembership.HandleChangeRequests().
 func NewHandler() *Handler {
-	logger := log.New(os.Stderr, "", log.LstdFlags)
+	//logger := log.New(os.Stderr, "", log.LstdFlags)
+	logger := log.New(ioutil.Discard, "", 0)
 	return NewHandlerWithLogger(logger)
 }
 

@@ -4,10 +4,10 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/CanonicalLtd/raft-membership"
@@ -18,7 +18,8 @@ import (
 // NewLayer returns a new raft stream layer that initiates connections
 // with HTTP and then uses Upgrade to switch them into raw TCP.
 func NewLayer(path string, localAddr net.Addr, handler *Handler, dial Dial) *Layer {
-	logger := log.New(os.Stderr, "", log.LstdFlags)
+	//logger := log.New(os.Stderr, "", log.LstdFlags)
+	logger := log.New(ioutil.Discard, "", 0)
 	return NewLayerWithLogger(path, localAddr, handler, dial, logger)
 }
 
