@@ -44,12 +44,12 @@ func ChangeMembership(
 	var err error
 	for remaining > 0 {
 		start := time.Now()
-		dial := func(network, addr string) (net.Conn, error) {
+		netDial := func(network, addr string) (net.Conn, error) {
 			return dial(addr, remaining)
 		}
 		client := &http.Client{
 			Timeout:   remaining,
-			Transport: &http.Transport{Dial: dial},
+			Transport: &http.Transport{Dial: netDial},
 		}
 		response, err = client.Do(request)
 
