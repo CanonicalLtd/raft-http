@@ -17,13 +17,24 @@ package rafthttp
 import (
 	"log"
 	"testing"
-
-	"github.com/CanonicalLtd/raft-test"
 )
 
 // NewTestingHandler creates a Handler for testing purposes. It logs to the
 // testing logger and serves requests.
 func NewTestingHandler(t *testing.T) *Handler {
-	logger := log.New(rafttest.TestingWriter(t), "", 0)
+	logger := log.New(&testingWriter{t}, "", 0)
 	return NewHandlerWithLogger(logger)
+}
+
+// Implement io.Writer and forward what it receives to a
+// testing logger.
+type testingWriter struct {
+	t testing.TB
+}
+
+// Write a single log entry. It's assumed that p is always a \n-terminated UTF
+// string.
+func (w *testingWriter) Write(p []byte) (n int, err error) {
+	w.t.Logf(string(p))
+	return len(p), nil
 }

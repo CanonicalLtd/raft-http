@@ -20,6 +20,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -61,15 +62,13 @@ func Example() {
 
 	// Start handling membership change requests on all nodes.
 	for i, handler := range handlers {
-		go raftmembership.HandleChangeRequests(rafts[i], handler.Requests())
+		id := raft.ServerID(strconv.Itoa(i))
+		go raftmembership.HandleChangeRequests(rafts[id], handler.Requests())
 	}
 
 	// Node 0 is the one supposed to get leadership, since it's currently
 	// the only one in the cluster.
-	raft1 := control.LeadershipAcquired(time.Second)
-	if control.Index(raft1) != 0 {
-		t.Fatalf("expected node 0 to become the leader")
-	}
+	control.Elect("0").ConnectAllServers()
 
 	// Request that the second node joins the cluster.
 	if err := layers[1].Join("1", transports[0].LocalAddr(), time.Second); err != nil {
@@ -92,7 +91,7 @@ func Example() {
 	// true
 	// 1
 	fmt.Println(strings.Contains(out.String(), "accepted connection from"))
-	fmt.Println(rafts[0].Stats()["num_peers"])
+	fmt.Println(rafts["0"].Stats()["num_peers"])
 }
 
 // Create a new Layer using a new Handler attached to a running HTTP
