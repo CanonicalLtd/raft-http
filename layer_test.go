@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/CanonicalLtd/raft-http"
-	"github.com/CanonicalLtd/raft-test"
 	"github.com/hashicorp/raft"
 )
 
@@ -306,11 +305,24 @@ func TestLayer_JoinRetryIfServiceUnavailable(t *testing.T) {
 
 // Wrapper around NewLayerWithLogger that writes logs using the test logger.
 func newLayer(t *testing.T, localAddr net.Addr, handler *rafthttp.Handler, dial rafthttp.Dial) *rafthttp.Layer {
-	logger := log.New(rafttest.TestingWriter(t), "", 0)
+	logger := log.New(&testingWriter{t}, "", 0)
 	return rafthttp.NewLayerWithLogger("/", localAddr, handler, dial, logger)
 }
 
 // Covert a net.Addr to raft.ServerAddress
 func raftAddress(addr net.Addr) raft.ServerAddress {
 	return raft.ServerAddress(addr.String())
+}
+
+// Implement io.Writer and forward what it receives to a
+// testing logger.
+type testingWriter struct {
+	t testing.TB
+}
+
+// Write a single log entry. It's assumed that p is always a \n-terminated UTF
+// string.
+func (w *testingWriter) Write(p []byte) (n int, err error) {
+	w.t.Logf(string(p))
+	return len(p), nil
 }
