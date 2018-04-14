@@ -38,16 +38,17 @@ func Example() {
 	// Create a set of transports using HTTP layers.
 	handlers := make([]*rafthttp.Handler, 3)
 	layers := make([]*rafthttp.Layer, 3)
-	transports := make([]raft.Transport, 3)
+	transports := make([]*raft.NetworkTransport, 3)
 	out := bytes.NewBuffer(nil)
+	layersCleanup := make([]func(), 3)
 	for i := range layers {
 		handler := rafthttp.NewHandler()
 		layer, cleanup := newExampleLayer(handler)
-		defer cleanup()
 
 		transport := raft.NewNetworkTransport(layer, 2, time.Second, out)
 
 		layers[i] = layer
+		layersCleanup[i] = cleanup
 		handlers[i] = handler
 		transports[i] = transport
 	}
@@ -58,7 +59,15 @@ func Example() {
 
 	// Create a 3-node cluster with default test configuration.
 	rafts, control := rafttest.Cluster(t, rafttest.FSMs(3), transport, servers)
-	defer control.Close()
+	defer func() {
+		control.Close()
+		for _, transport := range transports {
+			transport.CloseStreams()
+		}
+		for _, cleanup := range layersCleanup {
+			defer cleanup()
+		}
+	}()
 
 	// Start handling membership change requests on all nodes.
 	for i, handler := range handlers {
@@ -68,7 +77,7 @@ func Example() {
 
 	// Node 0 is the one supposed to get leadership, since it's currently
 	// the only one in the cluster.
-	control.Elect("0").ConnectAllServers()
+	control.Elect("0")
 
 	// Request that the second node joins the cluster.
 	if err := layers[1].Join("1", transports[0].LocalAddr(), time.Second); err != nil {
@@ -88,10 +97,10 @@ func Example() {
 	}
 
 	// Output:
-	// true
-	// 1
-	fmt.Println(strings.Contains(out.String(), "accepted connection from"))
-	fmt.Println(rafts["0"].Stats()["num_peers"])
+	// has logged connections: true
+	// peers: 1
+	fmt.Println("has logged connections:", strings.Contains(out.String(), "accepted connection from"))
+	fmt.Println("peers:", rafts["0"].Stats()["num_peers"])
 }
 
 // Create a new Layer using a new Handler attached to a running HTTP
@@ -106,7 +115,9 @@ func newExampleLayer(handler *rafthttp.Handler) (*rafthttp.Layer, func()) {
 	go server.Serve(listener)
 
 	cleanup := func() {
-		listener.Close()
+		if err := server.Close(); err != nil {
+			log.Fatalf("closing server failed: %v", err)
+		}
 	}
 
 	return layer, cleanup
