@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -17,8 +16,7 @@ import (
 
 // The Accept method receives connections from the conns channel.
 func TestLayer_Accept(t *testing.T) {
-	handler := rafthttp.NewHandler()
-	layer := rafthttp.NewLayer("/", nil, handler, nil)
+	handler, layer := newHandlerAndLayer(t)
 	server, client := net.Pipe()
 	go func() {
 		w := newResponseHijacker()
@@ -41,8 +39,7 @@ func TestLayer_Accept(t *testing.T) {
 
 // The Accept method returns an error if the layer was closed.
 func TestLayer_AcceptWhenClosed(t *testing.T) {
-	handler := rafthttp.NewHandler()
-	layer := rafthttp.NewLayer("/", nil, handler, nil)
+	layer := newLayer(t)
 	layer.Close()
 	conn, err := layer.Accept()
 	if conn != nil {
@@ -55,7 +52,7 @@ func TestLayer_AcceptWhenClosed(t *testing.T) {
 
 // The Close method is a no-op.
 func TestLayer_Close(t *testing.T) {
-	layer := rafthttp.NewLayer("/", nil, rafthttp.NewHandler(), nil)
+	layer := newLayer(t)
 	if err := layer.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +66,7 @@ func TestLayer_Addr(t *testing.T) {
 	}
 	defer listener.Close()
 	addr := listener.Addr()
-	layer := rafthttp.NewLayer("/", addr, nil, nil)
+	layer := newLayerWithAddr(t, addr)
 	if layer.Addr() != addr {
 		t.Fatal("Addr() did not return the configured address")
 	}
@@ -77,7 +74,7 @@ func TestLayer_Addr(t *testing.T) {
 
 // If the given HTTP path is invalid, an error is returned.
 func TestLayer_DialPathParseError(t *testing.T) {
-	layer := rafthttp.NewLayer("%:not\a/path", nil, nil, nil)
+	layer := newLayerWithPath(t, "%:not\a/path")
 	want := "invalid URL path %:not\a/path"
 	defer func() {
 		if got := recover(); got != want {
@@ -93,7 +90,7 @@ func TestLayer_DialDialError(t *testing.T) {
 	dial := func(string, time.Duration) (net.Conn, error) {
 		return nil, fmt.Errorf("connection error")
 	}
-	layer := rafthttp.NewLayer("/", nil, nil, dial)
+	layer := newLayerWithDial(t, dial)
 	conn, err := layer.Dial(":0", time.Second)
 	if conn != nil {
 		t.Fatal("expected nil conn")
@@ -116,7 +113,7 @@ func TestLayer_DialRequestWriteError(t *testing.T) {
 		conn.Close() // This will trigger a write error
 		return conn, nil
 	}
-	layer := rafthttp.NewLayer("/", nil, nil, dial)
+	layer := newLayerWithDial(t, dial)
 	conn, err := layer.Dial(":0", time.Second)
 	if conn != nil {
 		t.Fatal("expected nil conn")
@@ -139,7 +136,7 @@ func TestLayer_DialResponseWrongStatusCode(t *testing.T) {
 	dial := func(string, time.Duration) (net.Conn, error) {
 		return client, nil
 	}
-	layer := rafthttp.NewLayer("/", nil, nil, dial)
+	layer := newLayerWithDial(t, dial)
 	go func() {
 		// Read a line from the request data written by the
 		// layer via the client conn. This unblocks reading
@@ -170,7 +167,7 @@ func TestLayer_DialResponseReadError(t *testing.T) {
 	dial := func(string, time.Duration) (net.Conn, error) {
 		return client, nil
 	}
-	layer := rafthttp.NewLayer("/", nil, nil, dial)
+	layer := newLayerWithDial(t, dial)
 	go func() {
 		// Read a line from the request data written by the
 		// layer via the client conn. This unblocks reading
@@ -204,7 +201,7 @@ func TestLayer_DialResponseNoUpgradeHeader(t *testing.T) {
 	dial := func(string, time.Duration) (net.Conn, error) {
 		return client, nil
 	}
-	layer := rafthttp.NewLayer("/", nil, nil, dial)
+	layer := newLayerWithDial(t, dial)
 	go func() {
 		// Read a line from the request data written by the
 		// layer via the client conn. This unblocks reading
@@ -239,7 +236,7 @@ func TestLayer_JoinErrorStatusCode(t *testing.T) {
 	defer server.Close()
 
 	addr := server.Listener.Addr()
-	layer := rafthttp.NewLayer("/", addr, nil, rafthttp.NewDialTCP())
+	layer := newLayerWithAddrAndDial(t, addr, rafthttp.NewDialTCP())
 	err := layer.Join("1", raftAddress(addr), time.Second)
 	if err == nil {
 		t.Fatal("Join call did not fail")
@@ -252,7 +249,7 @@ func TestLayer_JoinErrorStatusCode(t *testing.T) {
 // If there's a network failure while leaving, an error is returned.
 func TestLayer_LeaveNetworkError(t *testing.T) {
 	addr := &net.TCPAddr{IP: []byte{0, 0, 0, 0}, Port: 0}
-	layer := rafthttp.NewLayer("/", addr, nil, rafthttp.NewDialTCP())
+	layer := newLayerWithAddrAndDial(t, addr, rafthttp.NewDialTCP())
 	err := layer.Leave("1", raftAddress(addr), time.Second)
 	if err == nil {
 		t.Fatal("Leave call did not fail")
@@ -262,7 +259,7 @@ func TestLayer_LeaveNetworkError(t *testing.T) {
 // If there's a network failure while joining, an error is returned.
 func TestLayer_JoinNetworkError(t *testing.T) {
 	addr := &net.TCPAddr{IP: []byte{0, 0, 0, 0}, Port: 0}
-	layer := rafthttp.NewLayer("/", addr, nil, rafthttp.NewDialTCP())
+	layer := newLayerWithAddrAndDial(t, addr, rafthttp.NewDialTCP())
 	err := layer.Join("1", raftAddress(addr), time.Second)
 	if err == nil {
 		t.Fatal("Join call did not fail")
@@ -279,7 +276,7 @@ func TestLayer_JoinLocationParseError(t *testing.T) {
 	defer server.Close()
 
 	addr := server.Listener.Addr()
-	layer := rafthttp.NewLayer("/", addr, nil, rafthttp.NewDialTCP())
+	layer := newLayerWithAddrAndDial(t, addr, rafthttp.NewDialTCP())
 	if err := layer.Join("1", raftAddress(addr), time.Second); err == nil {
 		t.Fatal("Join call did not fail")
 	}
@@ -297,32 +294,53 @@ func TestLayer_JoinRetryIfServiceUnavailable(t *testing.T) {
 	defer server.Close()
 
 	addr := server.Listener.Addr()
-	layer := rafthttp.NewLayer("/", addr, nil, rafthttp.NewDialTCP())
+	layer := newLayerWithAddrAndDial(t, addr, rafthttp.NewDialTCP())
 	if err := layer.Join("1", raftAddress(addr), time.Second); err != nil {
 		t.Fatalf("Join request failed although it was supposed to retry: %v", err)
 	}
 }
 
-// Wrapper around NewLayerWithLogger that writes logs using the test logger.
-func newLayer(t *testing.T, localAddr net.Addr, handler *rafthttp.Handler, dial rafthttp.Dial) *rafthttp.Layer {
-	logger := log.New(&testingWriter{t}, "", 0)
-	return rafthttp.NewLayerWithLogger("/", localAddr, handler, dial, logger)
+// Create both a new Handler and a new Layer, with sane defaults.
+func newHandlerAndLayer(t *testing.T) (*rafthttp.Handler, *rafthttp.Layer) {
+	handler := newHandler(t)
+	layer := rafthttp.NewLayerWithLogger("/", newAddr(), handler, nil, newLogger(t))
+	return handler, layer
+}
+
+// Create a new Layer, with sane defaults.
+func newLayer(t *testing.T) *rafthttp.Layer {
+	return rafthttp.NewLayerWithLogger("/", newAddr(), newHandler(t), nil, newLogger(t))
+}
+
+// Create a new Layer, with the given address.
+func newLayerWithAddr(t *testing.T, addr net.Addr) *rafthttp.Layer {
+	return rafthttp.NewLayerWithLogger("/", addr, newHandler(t), nil, newLogger(t))
+}
+
+// Create a new Layer, with the given path.
+func newLayerWithPath(t *testing.T, path string) *rafthttp.Layer {
+	return rafthttp.NewLayerWithLogger(path, newAddr(), newHandler(t), nil, newLogger(t))
+}
+
+// Create a new Layer, with the given dial function.
+func newLayerWithDial(t *testing.T, dial rafthttp.Dial) *rafthttp.Layer {
+	return rafthttp.NewLayerWithLogger("/", newAddr(), newHandler(t), dial, newLogger(t))
+}
+
+// Create a new Layer, with the given address and dial function.
+func newLayerWithAddrAndDial(t *testing.T, addr net.Addr, dial rafthttp.Dial) *rafthttp.Layer {
+	return rafthttp.NewLayerWithLogger("/", addr, newHandler(t), dial, newLogger(t))
+}
+
+// Create a new test network address.
+func newAddr() net.Addr {
+	return &net.TCPAddr{
+		IP:   net.IPv4(127, 0, 0, 1),
+		Port: 1234,
+	}
 }
 
 // Covert a net.Addr to raft.ServerAddress
 func raftAddress(addr net.Addr) raft.ServerAddress {
 	return raft.ServerAddress(addr.String())
-}
-
-// Implement io.Writer and forward what it receives to a
-// testing logger.
-type testingWriter struct {
-	t testing.TB
-}
-
-// Write a single log entry. It's assumed that p is always a \n-terminated UTF
-// string.
-func (w *testingWriter) Write(p []byte) (n int, err error) {
-	w.t.Logf(string(p))
-	return len(p), nil
 }
