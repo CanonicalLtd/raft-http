@@ -21,6 +21,7 @@ func ChangeMembership(
 	dial Dial,
 	id raft.ServerID,
 	address, target string,
+	userAgent string,
 	timeout time.Duration) error {
 	url := makeURL(path)
 	url.RawQuery = fmt.Sprintf("id=%s", id)
@@ -37,6 +38,9 @@ func ChangeMembership(
 		ProtoMajor: 1,
 		ProtoMinor: 1,
 		Header:     make(http.Header),
+	}
+	if userAgent != "" {
+		request.Header.Set("User-Agent", userAgent)
 	}
 
 	remaining := timeout

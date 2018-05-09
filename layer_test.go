@@ -12,12 +12,14 @@ import (
 
 	"github.com/CanonicalLtd/raft-http"
 	"github.com/hashicorp/raft"
+	"github.com/stretchr/testify/assert"
 )
 
 // The Accept method receives connections from the conns channel.
 func TestLayer_Accept(t *testing.T) {
 	handler, layer := newHandlerAndLayer(t)
 	server, client := net.Pipe()
+
 	go func() {
 		w := newResponseHijacker()
 		w.HijackConn = server
@@ -70,6 +72,30 @@ func TestLayer_Addr(t *testing.T) {
 	if layer.Addr() != addr {
 		t.Fatal("Addr() did not return the configured address")
 	}
+}
+
+// The UserAgent method can be used to set a custom User-Agent header for
+// outbound requests.
+func TestLayer_UserAgent(t *testing.T) {
+	userAgent := ""
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		userAgent = r.Header.Get("User-Agent")
+		http.Error(w, "unavailable", http.StatusServiceUnavailable)
+	})
+
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	layer := newLayerWithDial(t, rafthttp.NewDialTCP())
+	layer.UserAgent("my-agent")
+
+	layer.Join("1", raftAddress(server.Listener.Addr()), time.Second)
+	assert.Equal(t, "my-agent", userAgent)
+
+	layer.UserAgent("my-other-agent")
+
+	layer.Dial(raftAddress(server.Listener.Addr()), time.Second)
+	assert.Equal(t, "my-other-agent", userAgent)
 }
 
 // If the given HTTP path is invalid, an error is returned.

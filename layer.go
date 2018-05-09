@@ -41,6 +41,12 @@ type Layer struct {
 	handler   *Handler
 	dial      Dial
 	logger    *log.Logger
+	userAgent string
+}
+
+// UserAgent sets the user agent used for outbound HTTP requests.
+func (l *Layer) UserAgent(userAgent string) {
+	l.userAgent = userAgent
 }
 
 // Accept waits for the next connection.
@@ -79,6 +85,7 @@ func (l *Layer) Dial(addr raft.ServerAddress, timeout time.Duration) (net.Conn, 
 		Host:       l.Addr().String(),
 	}
 	request.Header.Set("Upgrade", "raft")
+	request.Header.Set("User-Agent", l.userAgent)
 
 	conn, err := l.dial(string(addr), timeout)
 	if err != nil {
@@ -122,7 +129,8 @@ func (l *Layer) Leave(id raft.ServerID, addr raft.ServerAddress, timeout time.Du
 
 // Change the membership of the server associated with this layer.
 func (l *Layer) changeMemberhip(kind raftmembership.ChangeRequestKind, id raft.ServerID, addr raft.ServerAddress, timeout time.Duration) error {
-	return ChangeMembership(kind, l.path, l.dial, id, l.Addr().String(), string(addr), timeout)
+	return ChangeMembership(
+		kind, l.path, l.dial, id, l.Addr().String(), string(addr), l.userAgent, timeout)
 }
 
 // Map a membership ChangeRequest kind code to an HTTP method name.
