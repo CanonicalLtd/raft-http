@@ -8,6 +8,8 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
+	"os/exec"
 	"strconv"
 	"time"
 
@@ -104,6 +106,10 @@ func (l *Layer) Dial(addr raft.ServerAddress, timeout time.Duration) (net.Conn, 
 			return nil, fmt.Errorf("malformed version header")
 		}
 		if peerVersion > version {
+			updateExecutable := os.Getenv("LXD_CLUSTER_UPDATE")
+			if updateExecutable != "" {
+				exec.Command(updateExecutable).CombinedOutput()
+			}
 			return nil, ErrTooOld
 		}
 		return nil, ErrTooRecent

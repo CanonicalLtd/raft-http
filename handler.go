@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"sync"
 	"strconv"
 	"time"
@@ -98,6 +99,12 @@ func (h *Handler) handleGet(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if peerVersion != version {
+			if peerVersion > version {
+				updateExecutable := os.Getenv("LXD_CLUSTER_UPDATE")
+				if updateExecutable != "" {
+					exec.Command(updateExecutable).CombinedOutput()
+				}
+			}
 			w.Header().Set("X-Raft-Version", fmt.Sprintf("%d", version))
 			http.Error(w, "version mismatch", http.StatusUpgradeRequired)
 			return
