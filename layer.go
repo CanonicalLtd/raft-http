@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/CanonicalLtd/raft-membership"
@@ -64,6 +65,8 @@ func (l *Layer) Addr() net.Addr {
 	return l.localAddr
 }
 
+const version = 1
+
 // Dial creates a new network connection.
 func (l *Layer) Dial(addr raft.ServerAddress, timeout time.Duration) (net.Conn, error) {
 	l.logger.Printf("[INFO] raft-http: Connecting to %s", addr)
@@ -78,6 +81,7 @@ func (l *Layer) Dial(addr raft.ServerAddress, timeout time.Duration) (net.Conn, 
 		Header:     make(http.Header),
 		Host:       l.Addr().String(),
 	}
+	request.Header.Set("X-Raft-Version", fmt.Sprintf("%d", version))
 	request.Header.Set("Upgrade", "raft")
 
 	conn, err := l.dial(string(addr), timeout)
@@ -92,6 +96,17 @@ func (l *Layer) Dial(addr raft.ServerAddress, timeout time.Duration) (net.Conn, 
 	response, err := http.ReadResponse(bufio.NewReader(conn), request)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to read response")
+	}
+	if response.StatusCode == http.StatusUpgradeRequired {
+		// Version mismatch
+		peerVersion, err := strconv.Atoi(response.Header.Get("X-Raft-Version"))
+		if err != nil {
+			return nil, fmt.Errorf("malformed version header")
+		}
+		if peerVersion > version {
+			return nil, ErrTooOld
+		}
+		return nil, ErrTooRecent
 	}
 	if response.StatusCode != http.StatusSwitchingProtocols {
 		return nil, fmt.Errorf("dialing fail: expected status code 101 got %d", response.StatusCode)
@@ -130,3 +145,9 @@ var membershipChangeRequestKindToMethod = map[raftmembership.ChangeRequestKind]s
 	raftmembership.JoinRequest:  "POST",
 	raftmembership.LeaveRequest: "DELETE",
 }
+
+// ErrTooOld is returned if the remote version is more recent than the local one.
+var ErrTooOld = fmt.Errorf("local version is too old")
+
+// ErrToRecent is returned if the remote version is older than the local one.
+var ErrTooRecent = fmt.Errorf("local version is too recent")
