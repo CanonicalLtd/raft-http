@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"sync"
+	"strconv"
 	"time"
 
 	"github.com/CanonicalLtd/raft-membership"
@@ -90,6 +91,19 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handleGet(w http.ResponseWriter, r *http.Request) {
+	if versionHeader := r.Header.Get("X-Raft-Version"); versionHeader != "" {
+		peerVersion, err := strconv.Atoi(versionHeader)
+		if err != nil {
+			http.Error(w, "invalid version header", http.StatusBadRequest)
+			return
+		}
+		if peerVersion != version {
+			w.Header().Set("X-Raft-Version", fmt.Sprintf("%d", version))
+			http.Error(w, "version mismatch", http.StatusUpgradeRequired)
+			return
+		}
+	}
+
 	if r.Header.Get("Upgrade") != "raft" {
 		http.Error(w, "missing or invalid upgrade header", http.StatusBadRequest)
 		return
